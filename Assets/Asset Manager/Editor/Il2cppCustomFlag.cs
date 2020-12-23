@@ -1,19 +1,21 @@
-﻿using UnityEditor;
-using UnityEditor.Build;
+﻿using UnityEditor.Build;
 using UnityEditor.Build.Reporting;
 
-public class Il2cppCustomFlag : IPreprocessBuildWithReport
+namespace Asset_Manager.Editor
 {
-    public int callbackOrder { get { return 0; } }
-
-    public void OnPreprocessBuild(BuildReport report)
+    public class Il2CPPCustomFlag : IPreprocessBuildWithReport
     {
-#if UNITY_IOS || UNITY_ANDROID
-        ScriptingImplementation backend = PlayerSettings.GetScriptingBackend(BuildPipeline.GetBuildTargetGroup(EditorUserBuildSettings.activeBuildTarget));
-        if (backend == ScriptingImplementation.IL2CPP)
+        public int callbackOrder => 0;
+
+        public void OnPreprocessBuild(BuildReport report)
         {
-            PlayerSettings.SetAdditionalIl2CppArgs("--maximum-recursive-generic-depth=50");
+#if UNITY_IOS || UNITY_ANDROID
+        UnityEditor.ScriptingImplementation backend = UnityEditor.PlayerSettings.GetScriptingBackend(UnityEditor.BuildPipeline.GetBuildTargetGroup(UnityEditor.EditorUserBuildSettings.activeBuildTarget));
+        if (backend == UnityEditor.ScriptingImplementation.IL2CPP)
+        {
+            UnityEditor.PlayerSettings.SetAdditionalIl2CppArgs("--maximum-recursive-generic-depth=50");
+        }
+#endif
         }
     }
-#endif
 }
