@@ -1,7 +1,6 @@
-﻿using System.Collections;
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
+using Asset_Manager.Runtime.Asset_Management.Pooling;
 using Skywatch.AssetManagement;
-using Skywatch.AssetManagement.Pooling;
 using UnityEngine;
 using UnityEngine.AddressableAssets;
 using UnityEngine.ResourceManagement.AsyncOperations;
@@ -19,7 +18,7 @@ public class DataContainer : ScriptableObject
         if (!Application.isPlaying)
             return;
         
-        var reference = _audioClips[UnityEngine.Random.Range(0, _audioClips.Count)];
+        var reference = _audioClips[Random.Range(0, _audioClips.Count)];
 
         if (AssetManager.TryGetOrLoadObjectAsync(reference, out AsyncOperationHandle<AudioClip> handle))
         {
@@ -47,7 +46,7 @@ public class DataContainer : ScriptableObject
         if (!Application.isPlaying)
             return;
 
-        var reference = _particleSystems[UnityEngine.Random.Range(0, _particleSystems.Count)];
+        var reference = _particleSystems[Random.Range(0, _particleSystems.Count)];
 
         if (usePooling)
         {

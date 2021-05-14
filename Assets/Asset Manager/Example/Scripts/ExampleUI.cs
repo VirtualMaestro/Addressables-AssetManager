@@ -1,6 +1,4 @@
 ﻿using System;
-using System.Collections;
-using System.Collections.Generic;
 using System.Text;
 using Skywatch.AssetManagement;
 using UnityEngine;
@@ -10,7 +8,6 @@ public class ExampleUI : MonoBehaviour
 {
     [SerializeField] bool _preLoadAssets;
     [SerializeField] string _preLoadLabel = "preload";
-    bool _loadFinished;
     [SerializeField] bool _usePooling;
     
     [Space(10)]
@@ -54,7 +51,6 @@ public class ExampleUI : MonoBehaviour
 
     void LoadFinished()
     {
-        _loadFinished = true;
         _loadingRoot.SetActive(false);
         _buttonsRoot.SetActive(true);
     }
@@ -90,7 +86,7 @@ public class ExampleUI : MonoBehaviour
 
     public void LogLoadedAssets()
     {
-        foreach (var loadedAsset in AssetManager.LoadedAssets)
+        foreach (var loadedAsset in AssetManager.loadedAssets)
         {
             Debug.Log(loadedAsset);
         }
