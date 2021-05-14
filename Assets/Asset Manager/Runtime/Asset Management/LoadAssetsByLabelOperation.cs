@@ -9,6 +9,7 @@ using Object = UnityEngine.Object;
 namespace Skywatch.AssetManagement
 {
     //Special thanks to TextusGames for their forum post: https://forum.unity.com/threads/how-to-get-asset-and-its-guid-from-known-lable.756560/
+    // TODO: Try to pool and reuse this class with all internal dynamically created structures
     public class LoadAssetsByLabelOperation : AsyncOperationBase<List<AsyncOperationHandle<Object>>>
     {
         string _label;
@@ -16,10 +17,13 @@ namespace Skywatch.AssetManagement
         Dictionary<object, AsyncOperationHandle> _loadingDictionary;
         Action<object, AsyncOperationHandle> _loadedCallback;
 
+        // TODO: Change order, first label
         public LoadAssetsByLabelOperation(Dictionary<object, AsyncOperationHandle> loadedDictionary, Dictionary<object, AsyncOperationHandle> loadingDictionary,
             string label, Action<object, AsyncOperationHandle> loadedCallback)
         {
             _loadedDictionary = loadedDictionary;
+            
+            // TODO: remove these redundant ifs 
             if (_loadedDictionary == null)
                 _loadedDictionary = new Dictionary<object, AsyncOperationHandle>();
             _loadingDictionary = loadingDictionary;
@@ -31,6 +35,7 @@ namespace Skywatch.AssetManagement
             _label = label;
         }
 
+        // TODO: See what this compiler code means and remove if no needs
         protected override void Execute()
         {
             #pragma warning disable CS4014
@@ -45,11 +50,11 @@ namespace Skywatch.AssetManagement
 
             var loadingInternalIdDic = new Dictionary<string, AsyncOperationHandle<Object>>();
             var loadedInternalIdDic = new Dictionary<string, AsyncOperationHandle<Object>>();
-
             var operationHandles = new List<AsyncOperationHandle<Object>>();
+            
             foreach (var resourceLocation in locations)
             {
-                AsyncOperationHandle<Object> loadingHandle = Addressables.LoadAssetAsync<Object>(resourceLocation.PrimaryKey);
+                var loadingHandle = Addressables.LoadAssetAsync<Object>(resourceLocation.PrimaryKey);
 
                 operationHandles.Add(loadingHandle);
 

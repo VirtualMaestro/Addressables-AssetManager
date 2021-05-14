@@ -1,12 +1,11 @@
-﻿using System.Collections;
-using System.Collections.Generic;
-using UnityEngine;
+﻿using UnityEngine;
 
-namespace Skywatch.AssetManagement
+namespace Asset_Manager.Runtime.Asset_Management
 {
     public class MonoTracker : MonoBehaviour
     {
         public delegate void DelegateDestroyed(MonoTracker tracker);
+
         public event DelegateDestroyed OnDestroyed;
 
         public object key { get; set; }

@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.CompilerServices;
+using Asset_Manager.Runtime.Asset_Management;
 using UnityEngine;
 using UnityEngine.AddressableAssets;
 using UnityEngine.AddressableAssets.ResourceLocators;
@@ -13,111 +15,115 @@ namespace Skywatch.AssetManagement
     /// <summary>
     /// Handles all loading, unloading, instantiating, and destroying of AssetReferences and their associated Objects.
     /// </summary>
+    // TODO: Cast all keys from object to string and change appropriate dictionaries  
     public static class AssetManager
     {
-        const string _baseErr = "<color=#ffa500>" + nameof(AssetManager) + " Error:</color> ";
+        private const string BaseErr = "<color=#ffa500>" + nameof(AssetManager) + " Error:</color> ";
 
         public delegate void DelegateAssetLoaded(object key, AsyncOperationHandle handle);
         public static event DelegateAssetLoaded OnAssetLoaded;
 
         public delegate void DelegateAssetUnloaded(object runtimeKey);
         public static event DelegateAssetUnloaded OnAssetUnloaded;
-        
-        static readonly Dictionary<object, AsyncOperationHandle> _loadingAssets = new Dictionary<object, AsyncOperationHandle>(20);
-        static readonly Dictionary<object, AsyncOperationHandle> _loadedAssets = new Dictionary<object, AsyncOperationHandle>(100);
-        public static IReadOnlyList<object> LoadedAssets => _loadedAssets.Values.Select(x => x.Result).ToList();
-        static readonly Dictionary<object, List<GameObject>> _instantiatedObjects = new Dictionary<object, List<GameObject>>(10);
 
-        public static int loadedAssetsCount => _loadedAssets.Count;
-        public static int loadingAssetsCount => _loadingAssets.Count;
-        public static int instantiatedAssetsCount => _instantiatedObjects.Values.SelectMany(x => x).Count();
+        private static readonly Dictionary<object, AsyncOperationHandle> LoadingAssets = new Dictionary<object, AsyncOperationHandle>(20);
+        private static readonly Dictionary<object, AsyncOperationHandle> LoadedAssets = new Dictionary<object, AsyncOperationHandle>(100);
+        private static readonly Dictionary<object, List<GameObject>> InstantiatedObjects = new Dictionary<object, List<GameObject>>(10);
+        
+        public static IReadOnlyList<object> loadedAssets => LoadedAssets.Values.Select(x => x.Result).ToList();
+        public static int loadedAssetsCount => LoadedAssets.Count;
+        public static int loadingAssetsCount => LoadingAssets.Count;
+        public static int instantiatedAssetsCount => InstantiatedObjects.Values.SelectMany(x => x).Count();
 
         #region Get
         public static bool IsLoaded(AssetReference aRef)
         {
-            return _loadedAssets.ContainsKey(aRef.RuntimeKey);
+            return LoadedAssets.ContainsKey(aRef.RuntimeKey);
         }
         static bool IsLoaded(object key)
         {
-            return _loadedAssets.ContainsKey(key);
+            return LoadedAssets.ContainsKey(key);
         }
         public static bool IsLoading(AssetReference aRef)
         {
-            return _loadingAssets.ContainsKey(aRef.RuntimeKey);
+            return LoadingAssets.ContainsKey(aRef.RuntimeKey);
         }
         static bool IsLoading(object key)
         {
-            return _loadingAssets.ContainsKey(key);
+            return LoadingAssets.ContainsKey(key);
         }
         public static bool IsInstantiated(AssetReference aRef)
         {
-            return _instantiatedObjects.ContainsKey(aRef.RuntimeKey);
+            return InstantiatedObjects.ContainsKey(aRef.RuntimeKey);
         }
         public static bool IsInstantiated(object key)
         {
-            return _instantiatedObjects.ContainsKey(key);
+            return InstantiatedObjects.ContainsKey(key);
         }
         public static int InstantiatedCount(AssetReference aRef)
         {
-            return !IsInstantiated(aRef) ? 0 : _instantiatedObjects[aRef.RuntimeKey].Count;
+            return !IsInstantiated(aRef) ? 0 : InstantiatedObjects[aRef.RuntimeKey].Count;
         }
         #endregion
         
         #region Load/Unload
+        
+        // TODO: add method LoadAllByLabel - scenes are also included
+        // TODO: add method InstantiateAllByLabel - scenes are also included
+        
         /// <summary>
         /// DO NOT USE FOR <see cref="Component"/>s. Call <see cref="TryGetOrLoadComponentAsync{TComponentType}(UnityEngine.AddressableAssets.AssetReference,out UnityEngine.ResourceManagement.AsyncOperations.AsyncOperationHandle{TComponentType})"/>
         ///
-        /// Tries to get an already loaded <see cref="UnityEngine.Object"/> of type <see cref="TObjectType"/>.
+        /// Tries to get an already loaded <see cref="UnityEngine.Object"/> of type <see cref="T"/>.
         /// Returns <value>true</value> if the object was loaded and sets <paramref name="handle"/> to the completed <see cref="AsyncOperationHandle{TObject}"/>
         /// If the object was not loaded returns <value>false</value>, loads the object and sets <paramref name="handle"/> to the un-completed <see cref="AsyncOperationHandle{TObject}"/>
         /// </summary>
         /// <param name="aRef">The <see cref="AssetReference"/> to load.</param>
         /// <param name="handle">The loading or completed <see cref="AsyncOperationHandle{TObject}"/></param>
-        /// <typeparam name="TObjectType">The type of NON-COMPONENT object to load.</typeparam>
+        /// <typeparam name="T">The type of NON-COMPONENT object to load.</typeparam>
         /// <returns><value>true</value> if the object has already been loaded, false otherwise.</returns>
-        public static bool TryGetOrLoadObjectAsync<TObjectType>(AssetReference aRef, out AsyncOperationHandle<TObjectType> handle) where TObjectType : Object
+        public static bool TryGetOrLoadObjectAsync<T>(AssetReference aRef, out AsyncOperationHandle<T> handle) where T : Object
         {
-            CheckRuntimeKey(aRef);
+            _CheckRuntimeKey(aRef);
 
             var key = aRef.RuntimeKey;
 
-            if (_loadedAssets.ContainsKey(key))
+            if (LoadedAssets.TryGetValue(key, out var loadedAsyncOp))
             {
                 try
                 {
-                    handle = _loadedAssets[key].Convert<TObjectType>();
+                    handle = loadedAsyncOp.Convert<T>();
                 }
                 catch
                 {
-                    handle = Addressables.ResourceManager.CreateCompletedOperation(_loadedAssets[key].Result as TObjectType, string.Empty);
+                    handle = Addressables.ResourceManager.CreateCompletedOperation(loadedAsyncOp.Result as T, string.Empty);
                 }
 
                 return true;
             }
 
-
-            if (_loadingAssets.ContainsKey(key))
+            if (LoadingAssets.TryGetValue(key, out var loadingAsyncOp))
             {
                 try
                 {
-                    handle = _loadingAssets[key].Convert<TObjectType>();
+                    handle = loadingAsyncOp.Convert<T>();
                 }
                 catch
                 {
-                    handle = Addressables.ResourceManager.CreateChainOperation(_loadingAssets[key], chainOp => Addressables.ResourceManager.CreateCompletedOperation(chainOp.Result as TObjectType, string.Empty));
+                    handle = Addressables.ResourceManager.CreateChainOperation(loadingAsyncOp, chainOp => Addressables.ResourceManager.CreateCompletedOperation(chainOp.Result as T, string.Empty));
                 }
+                
                 return false;
             }
-            
 
-            handle = Addressables.LoadAssetAsync<TObjectType>(aRef);
+            handle = Addressables.LoadAssetAsync<T>(aRef);
             
-            _loadingAssets.Add(key, handle);
+            LoadingAssets.Add(key, handle);
 
             handle.Completed += op2 =>
             {
-                _loadedAssets.Add(key, op2);
-                _loadingAssets.Remove(key);
+                LoadedAssets.Add(key, op2);
+                LoadingAssets.Remove(key);
                 
                 OnAssetLoaded?.Invoke(key, op2);
             };
@@ -153,32 +159,30 @@ namespace Skywatch.AssetManagement
         /// <returns><value>true</value> if the object has already been loaded, false otherwise.</returns>
         public static bool TryGetOrLoadComponentAsync<TComponentType>(AssetReference aRef, out AsyncOperationHandle<TComponentType> handle) where TComponentType : Component
         {
-            CheckRuntimeKey(aRef);
+            _CheckRuntimeKey(aRef);
 
             var key = aRef.RuntimeKey;
 
-            if (_loadedAssets.ContainsKey(key))
+            if (LoadedAssets.TryGetValue(key, out var loadedAsyncOp))
             {
-                handle = ConvertHandleToComponent<TComponentType>(_loadedAssets[key]);
+                handle = _ConvertHandleToComponent<TComponentType>(loadedAsyncOp);
                 return true;
             }
 
-
-            if (_loadingAssets.ContainsKey(key))
+            if (LoadingAssets.TryGetValue(key, out var loadingAsyncOp))
             {
-                handle = Addressables.ResourceManager.CreateChainOperation(_loadingAssets[key], ConvertHandleToComponent<TComponentType>);
+                handle = Addressables.ResourceManager.CreateChainOperation(loadingAsyncOp, _ConvertHandleToComponent<TComponentType>);
                 return false;
             }
-            
 
             var op = Addressables.LoadAssetAsync<GameObject>(aRef);
             
-            _loadingAssets.Add(key, op);
+            LoadingAssets.Add(key, op);
 
             op.Completed += op2 =>
             {
-                _loadedAssets.Add(key, op2);
-                _loadingAssets.Remove(key);
+                LoadedAssets.Add(key, op2);
+                LoadingAssets.Remove(key);
 
                 OnAssetLoaded?.Invoke(key, op2);
             };
@@ -189,8 +193,10 @@ namespace Skywatch.AssetManagement
                 var comp = go.GetComponent<TComponentType>();
                 return Addressables.ResourceManager.CreateCompletedOperation(comp, string.Empty);
             });
+            
             return false;
         }
+        
         /// <summary>
         /// DO NOT USE FOR <see cref="UnityEngine.Object"/>s. Call <see cref="TryGetOrLoadObjectAsync{TObjectType}(UnityEngine.AddressableAssets.AssetReference,out UnityEngine.ResourceManagement.AsyncOperations.AsyncOperationHandle{TObjectType})"/>
         ///
@@ -206,21 +212,24 @@ namespace Skywatch.AssetManagement
         {
             return TryGetOrLoadComponentAsync(aRef as AssetReference, out handle);
         }
+
+#region Sync methods
         
         public static bool TryGetObjectSync<TObjectType>(AssetReference aRef, out TObjectType result) where TObjectType : Object
         {
-            CheckRuntimeKey(aRef);
+            _CheckRuntimeKey(aRef);
             var key = aRef.RuntimeKey;
             
-            if (_loadedAssets.ContainsKey(key))
+            if (LoadedAssets.ContainsKey(key))
             {
-                result = _loadedAssets[key].Convert<TObjectType>().Result;
+                result = LoadedAssets[key].Convert<TObjectType>().Result;
                 return true;
             }
 
             result = null;
             return false;
         }
+        
         public static bool TryGetObjectSync<TObjectType>(AssetReferenceT<TObjectType> aRef, out TObjectType result) where TObjectType : Object
         {
             return TryGetObjectSync(aRef as AssetReference, out result);
@@ -228,12 +237,12 @@ namespace Skywatch.AssetManagement
 
         public static bool TryGetComponentSync<TComponentType>(AssetReference aRef, out TComponentType result) where TComponentType : Component
         {
-            CheckRuntimeKey(aRef);
+            _CheckRuntimeKey(aRef);
             var key = aRef.RuntimeKey;
 
-            if (_loadedAssets.ContainsKey(key))
+            if (LoadedAssets.ContainsKey(key))
             {
-                var handle = _loadedAssets[key];
+                var handle = LoadedAssets[key];
                 result = null;
                 var go = handle.Result as GameObject;
                 if (!go)
@@ -247,17 +256,21 @@ namespace Skywatch.AssetManagement
             result = null;
             return false;
         }
+        
         public static bool TryGetComponentSync<TComponentType>(AssetReferenceT<TComponentType> aRef, out TComponentType result) where TComponentType : Component
         {
             return TryGetComponentSync(aRef as AssetReference, out result);
         }
         
+#endregion
+        
         public static AsyncOperationHandle<List<AsyncOperationHandle<Object>>> LoadAssetsByLabelAsync(string label)
         {
-            var handle = Addressables.ResourceManager.StartOperation(new LoadAssetsByLabelOperation(_loadedAssets, _loadingAssets, label, AssetLoadedCallback), default);
-            return handle;
+            var loadByLabelOperation = new LoadAssetsByLabelOperation(LoadedAssets, LoadingAssets, label, _OnAssetLoadedCallback);
+            return Addressables.ResourceManager.StartOperation(loadByLabelOperation, default);
         }
-        static void AssetLoadedCallback(object key, AsyncOperationHandle handle)
+
+        private static void _OnAssetLoadedCallback(object key, AsyncOperationHandle handle)
         {
             OnAssetLoaded?.Invoke(key, handle);
         }
@@ -269,30 +282,26 @@ namespace Skywatch.AssetManagement
         /// <returns></returns>
         public static void Unload(AssetReference aRef)
         {
-            CheckRuntimeKey(aRef);
+            _CheckRuntimeKey(aRef);
 
             var key = aRef.RuntimeKey;
 
             Unload(key);
         }
-        static void Unload(object key)
+        
+        public static void Unload(object key)
         {
-            CheckRuntimeKey(key);
-            
-            AsyncOperationHandle handle;
-            if (_loadingAssets.ContainsKey(key))
-            {
-                handle = _loadingAssets[key];
-                _loadingAssets.Remove(key);
-            }
-            else if (_loadedAssets.ContainsKey(key))
-            {
-                handle = _loadedAssets[key];
-                _loadedAssets.Remove(key);
-            }
+            // TODO: Remove this check since we don't need to know if Key is valid but need to find in the dictionaries LoadingAssets or LoadedAssets
+            _CheckRuntimeKey(key);
+
+            // TODO: Change order: set first LoadedAssets since this is the most often scenario 
+            if (LoadingAssets.TryGetValue(key, out var handle))
+                LoadingAssets.Remove(key);
+            else if (LoadedAssets.TryGetValue(key, out handle))
+                LoadedAssets.Remove(key);
             else
             {
-                Debug.LogWarning($"{_baseErr}Cannot {nameof(Unload)} RuntimeKey '{key}': It is not loading or loaded.");
+                Debug.LogWarning($"{BaseErr}Cannot {nameof(Unload)} RuntimeKey '{key}': It is not loading or loaded.");
                 return;
             }
 
@@ -320,9 +329,11 @@ namespace Skywatch.AssetManagement
                     Debug.LogError($"Cannot Unload by label '{label}'");
                     return;
                 }
-                var keys = GetKeysFromLocations(op.Result);
+                
+                var keys = _GetKeysFromLocations(op.Result);
                 foreach (var key in keys)
                 {
+                    // TODO: Remove this check since Unload method already contains them.
                     if (IsLoaded(key) || IsLoading(key))
                         Unload(key);
                 }
@@ -332,7 +343,7 @@ namespace Skywatch.AssetManagement
         
         #endregion
 
-        #region Instantiation
+#region Instantiation
 
         public static bool TryInstantiateOrLoadAsync(AssetReference aRef, Vector3 position, Quaternion rotation, Transform parent,
             out AsyncOperationHandle<GameObject> handle)
@@ -358,6 +369,7 @@ namespace Skywatch.AssetManagement
             });
             return false;
         }
+        
         //Returns an AsyncOperationHandle<TComponentType> with the result set to an instantiated Component.
         public static bool TryInstantiateOrLoadAsync<TComponentType>(AssetReference aRef, Vector3 position, Quaternion rotation, Transform parent,
             out AsyncOperationHandle<TComponentType> handle) where TComponentType : Component
@@ -384,12 +396,33 @@ namespace Skywatch.AssetManagement
             });
             return false;
         }
+        
+        /// <summary>
+        /// 
+        /// </summary>
+        /// <param name="aRef"></param>
+        /// <param name="position"></param>
+        /// <param name="rotation"></param>
+        /// <param name="parent"></param>
+        /// <param name="handle"></param>
+        /// <typeparam name="TComponentType"></typeparam>
+        /// <returns></returns>
         public static bool TryInstantiateOrLoadAsync<TComponentType>(AssetReferenceT<TComponentType> aRef, Vector3 position, Quaternion rotation, Transform parent,
             out AsyncOperationHandle<TComponentType> handle) where TComponentType : Component
         {
             return TryInstantiateOrLoadAsync(aRef as AssetReference, position, rotation, parent, out handle);
         }
 
+        /// <summary>
+        /// 
+        /// </summary>
+        /// <param name="aRef"></param>
+        /// <param name="count"></param>
+        /// <param name="position"></param>
+        /// <param name="rotation"></param>
+        /// <param name="parent"></param>
+        /// <param name="handle"></param>
+        /// <returns></returns>
         public static bool TryInstantiateMultiOrLoadAsync(AssetReference aRef, int count, Vector3 position, Quaternion rotation, Transform parent,
             out AsyncOperationHandle<List<GameObject>> handle)
         {
@@ -426,6 +459,7 @@ namespace Skywatch.AssetManagement
             });
             return false;
         }
+        
         public static bool TryInstantiateMultiOrLoadAsync<TComponentType>(AssetReference aRef, int count, Vector3 position, Quaternion rotation, Transform parent,
             out AsyncOperationHandle<List<TComponentType>> handle) where TComponentType : Component
         {
@@ -460,8 +494,10 @@ namespace Skywatch.AssetManagement
 
                 return Addressables.ResourceManager.CreateCompletedOperation(list, string.Empty);
             });
+            
             return false;
         }
+        
         public static bool TryInstantiateMultiOrLoadAsync<TComponentType>(AssetReferenceT<TComponentType> aRef, int count, Vector3 position, Quaternion rotation,
             Transform parent, out AsyncOperationHandle<List<TComponentType>> handle) where TComponentType : Component
         {
@@ -479,6 +515,7 @@ namespace Skywatch.AssetManagement
             result = InstantiateInternal(aRef, loadResult, position, rotation, parent);
             return true;
         }
+        
         public static bool TryInstantiateSync<TComponentType>(AssetReference aRef, Vector3 position, Quaternion rotation, Transform parent,
             out TComponentType result) where TComponentType : Component
         {
@@ -491,6 +528,7 @@ namespace Skywatch.AssetManagement
             result = InstantiateInternal(aRef, loadResult, position, rotation, parent);
             return true;
         }
+        
         public static bool TryInstantiateSync<TComponentType>(AssetReferenceT<TComponentType> aRef, Vector3 position, Quaternion rotation, Transform parent,
             out TComponentType result) where TComponentType : Component
         {
@@ -516,6 +554,13 @@ namespace Skywatch.AssetManagement
             result = list;
             return true;
         }
+        
+        public static bool TryInstantiateMultiSync<TComponentType>(AssetReferenceT<TComponentType> aRef, int count, Vector3 position, Quaternion rotation, Transform parent,
+            out List<TComponentType> result) where TComponentType : Component
+        {
+            return TryInstantiateMultiSync(aRef as AssetReference, count, position, rotation, parent, out result);
+        }
+
         public static bool TryInstantiateMultiSync<TComponentType>(AssetReference aRef, int count, Vector3 position, Quaternion rotation, Transform parent,
             out List<TComponentType> result) where TComponentType : Component
         {
@@ -535,11 +580,6 @@ namespace Skywatch.AssetManagement
             result = list;
             return true;
         }
-        public static bool TryInstantiateMultiSync<TComponentType>(AssetReferenceT<TComponentType> aRef, int count, Vector3 position, Quaternion rotation, Transform parent,
-            out List<TComponentType> result) where TComponentType : Component
-        {
-            return TryInstantiateMultiSync(aRef as AssetReference, count, position, rotation, parent, out result);
-        }
 
         static TComponentType InstantiateInternal<TComponentType>(AssetReference aRef, TComponentType loadedAsset, Vector3 position, Quaternion rotation, Transform parent)
             where TComponentType : Component
@@ -554,11 +594,14 @@ namespace Skywatch.AssetManagement
             monoTracker.key = key;
             monoTracker.OnDestroyed += TrackerDestroyed;
 
-            if(!_instantiatedObjects.ContainsKey(key))
-                _instantiatedObjects.Add(key, new List<GameObject>(20));
-            _instantiatedObjects[key].Add(instance.gameObject);
+            if(!InstantiatedObjects.ContainsKey(key))
+                InstantiatedObjects.Add(key, new List<GameObject>(20));
+            
+            InstantiatedObjects[key].Add(instance.gameObject);
+            
             return instance;
         }
+        
         static GameObject InstantiateInternal(AssetReference aRef, GameObject loadedAsset, Vector3 position, Quaternion rotation, Transform parent)
         {
             var key = aRef.RuntimeKey;
@@ -571,15 +614,15 @@ namespace Skywatch.AssetManagement
             monoTracker.key = key;
             monoTracker.OnDestroyed += TrackerDestroyed;
             
-            if(!_instantiatedObjects.ContainsKey(key))
-                _instantiatedObjects.Add(key, new List<GameObject>(20));
-            _instantiatedObjects[key].Add(instance);
+            if(!InstantiatedObjects.ContainsKey(key))
+                InstantiatedObjects.Add(key, new List<GameObject>(20));
+            InstantiatedObjects[key].Add(instance);
             return instance;
         }
         
         static void TrackerDestroyed(MonoTracker tracker)
         {
-            if (_instantiatedObjects.TryGetValue(tracker.key, out var list))
+            if (InstantiatedObjects.TryGetValue(tracker.key, out var list))
                 list.Remove(tracker.gameObject);
         }
 
@@ -588,9 +631,9 @@ namespace Skywatch.AssetManagement
         /// </summary>
         public static void DestroyAllInstances(AssetReference aRef)
         {
-            CheckRuntimeKey(aRef);
+            _CheckRuntimeKey(aRef);
 
-            if (!_instantiatedObjects.ContainsKey(aRef.RuntimeKey))
+            if (!InstantiatedObjects.ContainsKey(aRef.RuntimeKey))
             {
                 Debug.LogWarning($"{nameof(AssetReference)} '{aRef}' has not been instantiated. 0 Instances destroyed.");
                 return;
@@ -600,96 +643,95 @@ namespace Skywatch.AssetManagement
 
             DestroyAllInstances(key);
         }
-        static void DestroyAllInstances(object key)
+        
+        public static void DestroyAllInstances(object key)
         {
-            var instanceList = _instantiatedObjects[key];
-            for (int i = instanceList.Count - 1; i >= 0; i--)
-            {
-                DestroyInternal(instanceList[i]);
-            }
-            _instantiatedObjects[key].Clear();
-            _instantiatedObjects.Remove(key);
+            var instanceList = InstantiatedObjects[key];
+            for (var i = instanceList.Count - 1; i >= 0; i--)
+                _DestroyInternal(instanceList[i]);
+            
+            InstantiatedObjects[key].Clear();
+            InstantiatedObjects.Remove(key);
         }
-        static void DestroyInternal(Object obj)
+        
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static void _DestroyInternal(Object obj)
         {
             var c = obj as Component;
-            if (c)
-                Object.Destroy(c.gameObject);
-            else
-            {
-                var go = obj as GameObject;
-                if(go)
-                    Object.Destroy(go);
-            }
+            Object.Destroy(c ? c.gameObject : obj);
         }
-        #endregion
+#endregion
         
-        #region Utilities
-        static void CheckRuntimeKey(AssetReference aRef)
+#region Utilities
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static void _CheckRuntimeKey(AssetReference aRef)
         {
+#if DEBUG
             if (!aRef.RuntimeKeyIsValid())
-            {
-                //Debug.Log(aRef.RuntimeKey);
-                throw new InvalidKeyException($"{_baseErr}{nameof(aRef.RuntimeKey)} is not valid for '{aRef}'.");
-            }
+                throw new InvalidKeyException($"{BaseErr}{nameof(aRef.RuntimeKey)} is not valid for '{aRef}'.");
+#endif
         }
-        static bool CheckRuntimeKey(object key)
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static bool _CheckRuntimeKey(object key)
         {
             return Guid.TryParse(key.ToString(), out var result);
         }
-        
-        static AsyncOperationHandle<TComponentType> ConvertHandleToComponent<TComponentType>(AsyncOperationHandle handle) where TComponentType : Component
+
+        private static AsyncOperationHandle<TComponentType> _ConvertHandleToComponent<TComponentType>(AsyncOperationHandle handle) where TComponentType : Component
         {
-            GameObject go = handle.Result as GameObject;
+            var go = handle.Result as GameObject;
+            
             if (!go)
                 throw new ConversionException($"Cannot convert {nameof(handle.Result)} to {nameof(GameObject)}.");
-            TComponentType comp = go.GetComponent<TComponentType>();
-            if (!comp)
-                throw new ConversionException($"Cannot {nameof(go.GetComponent)} of Type {typeof(TComponentType)}.");
-            var result = Addressables.ResourceManager.CreateCompletedOperation(comp, string.Empty);
-
-            return result;
+            
+            if (go.TryGetComponent<TComponentType>(out var comp))
+                return Addressables.ResourceManager.CreateCompletedOperation(comp, string.Empty);
+            
+            throw new ConversionException($"Cannot {nameof(go.GetComponent)} of Type {typeof(TComponentType)}.");
         }
         
-        static List<object> GetKeysFromLocations(IList<IResourceLocation> locations)
+        private static List<object> _GetKeysFromLocations(IList<IResourceLocation> locations)
         {
-            List<object> keys = new List<object>(locations.Count);
+            var keys = new List<object>(locations.Count);
             
             foreach (var locator in Addressables.ResourceLocators)
             {
                 foreach (var key in locator.Keys)
                 {
-                    bool isGUID = Guid.TryParse(key.ToString(), out var guid);
-                    if (!isGUID)
+                    if (!Guid.TryParse(key.ToString(), out var guid))
                         continue;
                     
-                    if (!TryGetKeyLocationID(locator, key, out var keyLocationID))
+                    if (!_TryGetKeyLocationID(locator, key, out var keyLocationID))
                         continue;
 
+                    // TODO: Optimize this linq
                     var locationMatched = locations.Select(x => x.InternalId).ToList().Exists(x => x == keyLocationID);
                     if (!locationMatched)
                         continue;
+                    
                     keys.Add(key);
                 }
             }
 
             return keys;
         }
-        static bool TryGetKeyLocationID(IResourceLocator locator, object key, out string internalID)
+        
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static bool _TryGetKeyLocationID(IResourceLocator locator, object key, out string internalID)
         {
             internalID = string.Empty;
+            
             var hasLocation = locator.Locate(key, typeof(Object), out var keyLocations);
-            if (!hasLocation)
-                return false;
-            if (keyLocations.Count == 0)
-                return false;
-            if (keyLocations.Count > 1)
+            
+            if (!hasLocation || keyLocations.Count != 1)
                 return false;
 
             internalID = keyLocations[0].InternalId;
             return true;
         }
-        #endregion
+#endregion
     }
 }
 
