@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 using UnityEngine.AddressableAssets;
 using UnityEngine.AddressableAssets.ResourceLocators;
@@ -10,11 +11,15 @@ namespace Skywatch.AssetManagement
 {
     //Special thanks to TextusGames for their forum post: https://forum.unity.com/threads/how-to-get-asset-and-its-guid-from-known-lable.756560/
     // TODO: Try to pool and reuse this class with all internal dynamically created structures
+    // TODO: Add Reset for nullifying 
     public class LoadAssetsByLabelOperation : AsyncOperationBase<List<AsyncOperationHandle<Object>>>
     {
+        // TODO: Add modifiers
         string _label;
+        // TODO: Can be static
         Dictionary<object, AsyncOperationHandle> _loadedDictionary;
         Dictionary<object, AsyncOperationHandle> _loadingDictionary;
+        
         Action<object, AsyncOperationHandle> _loadedCallback;
 
         // TODO: Change order, first label
@@ -23,7 +28,7 @@ namespace Skywatch.AssetManagement
         {
             _loadedDictionary = loadedDictionary;
             
-            // TODO: remove these redundant ifs 
+            // TODO: remove these redundant ifs and dic creation
             if (_loadedDictionary == null)
                 _loadedDictionary = new Dictionary<object, AsyncOperationHandle>();
             _loadingDictionary = loadingDictionary;
@@ -43,6 +48,8 @@ namespace Skywatch.AssetManagement
             #pragma warning restore CS4014
         }
 
+        // TODO: Make private
+        // TODO: Optimize retrieving and validating ResourceLocators
         public async Task DoTask()
         {
             var locationsHandle = Addressables.LoadResourceLocationsAsync(_label);
@@ -72,11 +79,10 @@ namespace Skywatch.AssetManagement
             {
                 foreach (var key in locator.Keys)
                 {
-                    bool isGUID = Guid.TryParse(key.ToString(), out var guid);
-                    if (!isGUID)
+                    if (!Guid.TryParse(key.ToString(), out _))
                         continue;
                     
-                    if (!TryGetKeyLocationID(locator, key, out var keyLocationID))
+                    if (!_TryGetKeyLocationID(locator, key, out var keyLocationID))
                         continue;
 
                     var locationMatched = loadingInternalIdDic.TryGetValue(keyLocationID, out var loadingHandle);
@@ -95,11 +101,10 @@ namespace Skywatch.AssetManagement
             {
                 foreach (var key in locator.Keys)
                 {
-                    bool isGUID = Guid.TryParse(key.ToString(), out var guid);
-                    if (!isGUID)
+                    if (!Guid.TryParse(key.ToString(), out _))
                         continue;
                     
-                    if (!TryGetKeyLocationID(locator, key, out var keyLocationID))
+                    if (!_TryGetKeyLocationID(locator, key, out var keyLocationID))
                         continue;
 
                     var locationMatched = loadedInternalIdDic.TryGetValue(keyLocationID, out var loadedHandle);
@@ -108,6 +113,7 @@ namespace Skywatch.AssetManagement
 
                     if (_loadingDictionary.ContainsKey(key))
                         _loadingDictionary.Remove(key);
+                    
                     if (!_loadedDictionary.ContainsKey(key))
                     {
                         _loadedDictionary.Add(key, loadedHandle);
@@ -119,15 +125,13 @@ namespace Skywatch.AssetManagement
             Complete(operationHandles, true, string.Empty);
         }
 
-        bool TryGetKeyLocationID(IResourceLocator locator, object key, out string internalID)
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static bool _TryGetKeyLocationID(IResourceLocator locator, object key, out string internalID)
         {
             internalID = string.Empty;
+            
             var hasLocation = locator.Locate(key, typeof(Object), out var keyLocations);
-            if (!hasLocation)
-                return false;
-            if (keyLocations.Count == 0)
-                return false;
-            if (keyLocations.Count > 1)
+            if (!hasLocation || keyLocations.Count != 1)
                 return false;
 
             internalID = keyLocations[0].InternalId;
