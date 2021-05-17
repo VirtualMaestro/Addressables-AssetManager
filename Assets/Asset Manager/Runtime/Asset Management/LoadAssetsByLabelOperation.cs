@@ -14,29 +14,18 @@ namespace Skywatch.AssetManagement
     // TODO: Add Reset for nullifying 
     public class LoadAssetsByLabelOperation : AsyncOperationBase<List<AsyncOperationHandle<Object>>>
     {
-        // TODO: Add modifiers
-        string _label;
-        // TODO: Can be static
-        Dictionary<object, AsyncOperationHandle> _loadedDictionary;
-        Dictionary<object, AsyncOperationHandle> _loadingDictionary;
-        
-        Action<object, AsyncOperationHandle> _loadedCallback;
+        private string _label;
+        private Dictionary<string, AsyncOperationHandle> _loadedDictionary;
+        private Dictionary<string, AsyncOperationHandle> _loadingDictionary;
+        private Action<string, AsyncOperationHandle> _loadedCallback;
 
-        // TODO: Change order, first label
-        public LoadAssetsByLabelOperation(Dictionary<object, AsyncOperationHandle> loadedDictionary, Dictionary<object, AsyncOperationHandle> loadingDictionary,
-            string label, Action<object, AsyncOperationHandle> loadedCallback)
+        public LoadAssetsByLabelOperation(string label, Dictionary<string, AsyncOperationHandle> loadedDictionary,
+            Dictionary<string, AsyncOperationHandle> loadingDictionary,
+            Action<string, AsyncOperationHandle> loadedCallback)
         {
             _loadedDictionary = loadedDictionary;
-            
-            // TODO: remove these redundant ifs and dic creation
-            if (_loadedDictionary == null)
-                _loadedDictionary = new Dictionary<object, AsyncOperationHandle>();
             _loadingDictionary = loadingDictionary;
-            if (_loadingDictionary == null)
-                _loadingDictionary = new Dictionary<object, AsyncOperationHandle>();
-
             _loadedCallback = loadedCallback;
-
             _label = label;
         }
 
@@ -44,13 +33,12 @@ namespace Skywatch.AssetManagement
         protected override void Execute()
         {
             #pragma warning disable CS4014
-            DoTask();
+            _DoTask();
             #pragma warning restore CS4014
         }
 
-        // TODO: Make private
         // TODO: Optimize retrieving and validating ResourceLocators
-        public async Task DoTask()
+        private async Task _DoTask()
         {
             var locationsHandle = Addressables.LoadResourceLocationsAsync(_label);
             var locations = await locationsHandle.Task;
@@ -77,18 +65,15 @@ namespace Skywatch.AssetManagement
             
             foreach (var locator in Addressables.ResourceLocators)
             {
-                foreach (var key in locator.Keys)
+                foreach (var keyObj in locator.Keys)
                 {
-                    if (!Guid.TryParse(key.ToString(), out _))
+                    var key = keyObj.ToString();
+                    
+                    if (!Guid.TryParse(key, out _) || 
+                        !_TryGetKeyLocationID(locator, key, out var keyLocationID) || 
+                        !loadingInternalIdDic.TryGetValue(keyLocationID, out var loadingHandle))
                         continue;
                     
-                    if (!_TryGetKeyLocationID(locator, key, out var keyLocationID))
-                        continue;
-
-                    var locationMatched = loadingInternalIdDic.TryGetValue(keyLocationID, out var loadingHandle);
-                    if (!locationMatched)
-                        continue;
-
                     if (!_loadingDictionary.ContainsKey(key))
                         _loadingDictionary.Add(key, loadingHandle);
                 }
@@ -99,16 +84,13 @@ namespace Skywatch.AssetManagement
 
             foreach (var locator in Addressables.ResourceLocators)
             {
-                foreach (var key in locator.Keys)
+                foreach (var keyObj in locator.Keys)
                 {
-                    if (!Guid.TryParse(key.ToString(), out _))
-                        continue;
+                    var key = keyObj.ToString();
                     
-                    if (!_TryGetKeyLocationID(locator, key, out var keyLocationID))
-                        continue;
-
-                    var locationMatched = loadedInternalIdDic.TryGetValue(keyLocationID, out var loadedHandle);
-                    if (!locationMatched)
+                    if (!Guid.TryParse(key, out _) || 
+                        !_TryGetKeyLocationID(locator, key, out var keyLocationID) || 
+                        !loadedInternalIdDic.TryGetValue(keyLocationID, out var loadedHandle))
                         continue;
 
                     if (_loadingDictionary.ContainsKey(key))
@@ -123,10 +105,19 @@ namespace Skywatch.AssetManagement
             }
 
             Complete(operationHandles, true, string.Empty);
+            
+            Dispose();
+        }
+
+        public void Dispose()
+        {
+            _loadedDictionary = null;
+            _loadingDictionary = null;
+            _loadedCallback = null;
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool _TryGetKeyLocationID(IResourceLocator locator, object key, out string internalID)
+        private static bool _TryGetKeyLocationID(IResourceLocator locator, string key, out string internalID)
         {
             internalID = string.Empty;
             

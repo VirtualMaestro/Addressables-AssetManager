@@ -8,8 +8,7 @@ namespace Asset_Manager.Runtime.Asset_Management
 
         public event DelegateDestroyed OnDestroyed;
 
-        // TODO: Key as a string
-        public object key { get; set; }
+        public string key { get; set; }
 
         void OnDestroy()
         {
