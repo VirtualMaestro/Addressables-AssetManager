@@ -1,6 +1,6 @@
 ﻿using System;
 
-namespace Skywatch.AssetManagement
+namespace UnityEngine.AddressableAssets
 {
     public class ConversionException : Exception
     {

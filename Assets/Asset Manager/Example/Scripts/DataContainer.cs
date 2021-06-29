@@ -68,7 +68,7 @@ public class DataContainer : ScriptableObject
         }
         else
         {
-            if (AssetManager.TryInstantiateOrLoadAsync(reference, Vector3.zero, Quaternion.identity, null, out AsyncOperationHandle<ParticleSystem> handle))
+            if (AssetManager.InstantiatePrefab(reference, Vector3.zero, Quaternion.identity, null, out AsyncOperationHandle<ParticleSystem> handle))
             {
                 //The particle system has already been loaded.
                 Destroy(handle.Result.gameObject, 5f);
@@ -88,7 +88,7 @@ public class DataContainer : ScriptableObject
     {
         foreach (var assetReference in _particleSystems)
         {
-            if (AssetManager.IsInstantiated(assetReference))
+            if (AssetManager.HasInstance(assetReference))
                 AssetManager.DestroyAllInstances(assetReference);
         }
     }
@@ -97,13 +97,13 @@ public class DataContainer : ScriptableObject
     {
         foreach (var assetReference in _audioClips)
         {
-            if (AssetManager.IsLoaded(assetReference) || AssetManager.IsLoading(assetReference))
+            if (AssetManager.HasLoadedAsset(assetReference) || AssetManager.IsLoading(assetReference))
                 AssetManager.Unload(assetReference);
         }
 
         foreach (var assetReference in _particleSystems)
         {
-            if (AssetManager.IsLoaded(assetReference) || AssetManager.IsLoading(assetReference))
+            if (AssetManager.HasLoadedAsset(assetReference) || AssetManager.IsLoading(assetReference))
                 AssetManager.Unload(assetReference);
         }
     }

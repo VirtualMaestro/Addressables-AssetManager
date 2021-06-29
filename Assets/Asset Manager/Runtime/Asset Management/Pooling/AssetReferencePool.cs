@@ -2,8 +2,8 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
-using Skywatch.AssetManagement;
 using Skywatch.AssetManagement.Pooling;
+using UnityEditor;
 using UnityEngine;
 using UnityEngine.AddressableAssets;
 using UnityEngine.ResourceManagement.AsyncOperations;
@@ -95,7 +95,7 @@ namespace Asset_Manager.Runtime.Asset_Management.Pooling
         public abstract void PoolObjectReturned(PoolObject poolObject);
         
 #if UNITY_EDITOR
-        [UnityEditor.MenuItem("Skywatch/Log All Pools")]
+        [MenuItem("Skywatch/Log All Pools")]
 #endif
         public static void LogAllPools()
         {
@@ -134,7 +134,7 @@ namespace Asset_Manager.Runtime.Asset_Management.Pooling
 
             AssetManager.OnAssetUnloaded += OnObjectUnloaded;
             
-            if (AssetManager.TryGetOrLoadComponentAsync(assetReference, out _loadHandle))
+            if (AssetManager.InstantiateComponent((AssetReferenceT<TComponent>) assetReference, out _loadHandle))
             {
                 OnObjectLoaded(_loadHandle.Result);
             }
@@ -196,27 +196,28 @@ namespace Asset_Manager.Runtime.Asset_Management.Pooling
             };
         }
 
+        // TODO: Fix back
         void AddToPoolSyncSafe(int count)
         {
-            var pos = objectsParent ? objectsParent.position : Vector3.zero;
-
-            AssetManager.TryInstantiateMultiSync<TComponent>(assetReference, count, pos, Quaternion.identity, objectsParent, out var instanceList);
-            //var instanceList = AssetManager.InstantiateLoadedAssetSync<TComponent>(assetReference, count, pos, Quaternion.identity, objectsParent);
-            foreach (var component in instanceList)
-            {
-                var po = component.gameObject.AddComponent<PoolObject>();
-                po.myPool = this;
-                po.ReturnToPool();
-
-                var tuple = new Tuple<TComponent, PoolObject>(component, po);
-                _list.Add(tuple);
-                
-                var monoTracker = component.GetComponent<MonoTracker>() ?? component.gameObject.AddComponent<MonoTracker>();
-                monoTracker.OnDestroyed += tracker => { _list.Remove(tuple); };
-
-                _objectInstantiatedAction?.Invoke(component);
-                OnObjectInstantiated?.Invoke(component);
-            }
+            // var pos = objectsParent ? objectsParent.position : Vector3.zero;
+            //
+            // AssetManager.TryInstantiateMultiSync<TComponent>(assetReference, count, pos, Quaternion.identity, objectsParent, out var instanceList);
+            // //var instanceList = AssetManager.InstantiateLoadedAssetSync<TComponent>(assetReference, count, pos, Quaternion.identity, objectsParent);
+            // foreach (var component in instanceList)
+            // {
+            //     var po = component.gameObject.AddComponent<PoolObject>();
+            //     po.myPool = this;
+            //     po.ReturnToPool();
+            //
+            //     var tuple = new Tuple<TComponent, PoolObject>(component, po);
+            //     _list.Add(tuple);
+            //     
+            //     var monoTracker = component.GetComponent<MonoTracker>() ?? component.gameObject.AddComponent<MonoTracker>();
+            //     monoTracker.OnDestroyed += tracker => { _list.Remove(tuple); };
+            //
+            //     _objectInstantiatedAction?.Invoke(component);
+            //     OnObjectInstantiated?.Invoke(component);
+            // }
         }
 
         public bool TryTake(Vector3 position, Quaternion rotation, Transform parent, out AsyncOperationHandle<TComponent> handle)
@@ -235,6 +236,7 @@ namespace Asset_Manager.Runtime.Asset_Management.Pooling
             });
             return false;
         }
+        
         public TComponent TakeSync(Vector3 position, Quaternion rotation, Transform parent = null)
         {
             string errString = $"{GetType()} Error: ";

@@ -2,6 +2,7 @@
 using System.Text;
 using Skywatch.AssetManagement;
 using UnityEngine;
+using UnityEngine.AddressableAssets;
 using UnityEngine.UI;
 
 public class ExampleUI : MonoBehaviour

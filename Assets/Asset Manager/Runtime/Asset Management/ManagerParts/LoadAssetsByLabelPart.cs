@@ -1,17 +1,97 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
-using UnityEngine.AddressableAssets;
 using UnityEngine.AddressableAssets.ResourceLocators;
 using UnityEngine.ResourceManagement.AsyncOperations;
-using Object = UnityEngine.Object;
+using UnityEngine.ResourceManagement.ResourceLocations;
 
-namespace Skywatch.AssetManagement
+namespace UnityEngine.AddressableAssets
 {
-    //Special thanks to TextusGames for their forum post: https://forum.unity.com/threads/how-to-get-asset-and-its-guid-from-known-lable.756560/
-    // TODO: Try to pool and reuse this class with all internal dynamically created structures
-    // TODO: Add Reset for nullifying 
+    public static partial class AssetManager
+    {
+        public static AsyncOperationHandle<List<AsyncOperationHandle<Object>>> LoadAssetsByLabelAsync(string label)
+        {
+            var op = new LoadAssetsByLabelOperation(label, LoadedAssets, LoadingAssets, 
+                (key, handle) => OnAssetLoaded?.Invoke(key, handle));
+            
+            return Addressables.ResourceManager.StartOperation(op, default);
+        }
+        
+        /// <summary>
+        /// Unload all assets by given label
+        /// </summary>
+        /// <param name="label"></param>
+        public static void UnloadByLabel(string label)
+        {
+            if (string.IsNullOrEmpty(label) || string.IsNullOrWhiteSpace(label))
+            {
+                Debug.LogError("Label cannot be empty.");
+                return;
+            }
+
+            var locationsHandle = Addressables.LoadResourceLocationsAsync(label);
+            locationsHandle.Completed += op =>
+            {
+                if (locationsHandle.Status != AsyncOperationStatus.Succeeded)
+                {
+                    Debug.LogError($"Cannot Unload by label '{label}'");
+                    return;
+                }
+
+                var keys = _GetKeysFromLocations(op.Result);
+                foreach (var key in keys)
+                {
+                    Unload(key);
+                }
+            };
+        }
+        
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static List<string> _GetKeysFromLocations(IList<IResourceLocation> locations)
+        {
+            var keys = new List<string>(locations.Count);
+
+            foreach (var locator in Addressables.ResourceLocators)
+            {
+                foreach (var keyObj in locator.Keys)
+                {
+                    var key = keyObj.ToString();
+                    
+                    if (!Guid.TryParse(key, out _) || !_TryGetKeyLocationID(locator, key, out var keyLocationID))
+                        continue;
+
+                    // TODO: Optimize this linq
+                    var locationMatched = locations.Select(x => x.InternalId).ToList().Exists(x => x == keyLocationID);
+                    if (!locationMatched)
+                        continue;
+
+                    keys.Add(key);
+                }
+            }
+
+            return keys;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static bool _TryGetKeyLocationID(IResourceLocator locator, string key, out string internalID)
+        {
+            internalID = string.Empty;
+
+            var hasLocation = locator.Locate(key, typeof(Object), out var keyLocations);
+
+            if (!hasLocation || keyLocations.Count != 1)
+                return false;
+
+            internalID = keyLocations[0].InternalId;
+            return true;
+        }
+    }
+    
+    /// <summary>
+    /// Operation class for loading assets by given label.
+    /// </summary>
     public class LoadAssetsByLabelOperation : AsyncOperationBase<List<AsyncOperationHandle<Object>>>
     {
         private string _label;

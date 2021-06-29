@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using UnityEngine;
+using Object = UnityEngine.Object;
 
 namespace Asset_Manager.Runtime.Asset_Management.Pooling
 {
@@ -17,6 +18,16 @@ namespace Asset_Manager.Runtime.Asset_Management.Pooling
             {
                 action(element);
             }
+        }
+        
+        public static void AddMonoTracker(this Object uObject, string key, MonoTracker.DelegateDestroyed monoDestroyCallback)
+        {
+            var gameObject = uObject as GameObject;
+            gameObject = gameObject == null ? ((Component) uObject).gameObject: gameObject;
+            
+            var monoTracker = gameObject.AddComponent<MonoTracker>();
+            monoTracker.key = key;
+            monoTracker.OnDestroyed += monoDestroyCallback;
         }
     }
 }
