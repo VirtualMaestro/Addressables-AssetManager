@@ -22,10 +22,14 @@ namespace Skywatch.AssetManagement.Pooling
         [NonSerialized] Collider[] _colliders;
         [NonSerialized] bool[] _colliderStates;
 
+        [NonSerialized] Collider2D[] _colliders2D;
+        [NonSerialized] bool[] _collider2DStates;
+
         [NonSerialized] Renderer[] _renderers;
         [NonSerialized] bool[] _rendererStates;
 
         [NonSerialized] ParticleSystem[] _particleSystems;
+        [NonSerialized] bool[] _particleSystemUnscaledTime;
 
         [NonSerialized] AudioSource[] _audioSources;
         [NonSerialized] bool[] _audioSourceStates;
@@ -34,6 +38,11 @@ namespace Skywatch.AssetManagement.Pooling
 
         [NonSerialized] Rigidbody _rigidbody;
         [NonSerialized] bool _wasKinematic;
+        [NonSerialized] bool _wasFreezeRotation;
+
+        [NonSerialized] Rigidbody2D _rigidbody2D;
+        [NonSerialized] RigidbodyType2D _wasBodyType2D;
+        [NonSerialized] RigidbodyConstraints2D _wasConstraints2D;
 
         public bool inPool { get; private set; }
         public IPool myPool { get; set; }
@@ -62,12 +71,20 @@ namespace Skywatch.AssetManagement.Pooling
             for (int i = 0; i < _colliderStates.Length; i++)
                 _colliderStates[i] = _colliders[i].enabled;
 
+            _colliders2D = GetComponents<Collider2D>();
+            _collider2DStates = new bool[_colliders2D.Length];
+            for (int i = 0; i < _collider2DStates.Length; i++)
+                _collider2DStates[i] = _colliders2D[i].enabled;
+
             _renderers = GetComponents<Renderer>();
             _rendererStates = new bool[_renderers.Length];
             for (int i = 0; i < _renderers.Length; i++)
                 _rendererStates[i] = _renderers[i].enabled;
 
             _particleSystems = GetComponentsInChildren<ParticleSystem>(true);
+            _particleSystemUnscaledTime = new bool[_particleSystems.Length];
+            for (int i = 0; i < _particleSystems.Length; i++)
+                _particleSystemUnscaledTime[i] = _particleSystems[i].main.useUnscaledTime;
 
             _audioSources = GetComponentsInChildren<AudioSource>(true);
             _audioSourceStates = new bool[_audioSources.Length];
@@ -80,11 +97,21 @@ namespace Skywatch.AssetManagement.Pooling
 
             _rigidbody = GetComponent<Rigidbody>();
             if (_rigidbody)
+            {
                 _wasKinematic = _rigidbody.isKinematic;
+                _wasFreezeRotation = _rigidbody.freezeRotation;
+            }
+
+            _rigidbody2D = GetComponent<Rigidbody2D>();
+            if (_rigidbody2D)
+            {
+                _wasBodyType2D = _rigidbody2D.bodyType;
+                _wasConstraints2D = _rigidbody2D.constraints;
+            }
 
             var poolBehaviours = GetComponents<PoolBehaviour>();
             poolBehaviours.ForEach(x => x.SetPoolObject(this));
-            
+
             _initialized = true;
         }
 
@@ -102,6 +129,12 @@ namespace Skywatch.AssetManagement.Pooling
                     _colliders[i].enabled = true;
             }
 
+            for (int i = 0; i < _colliders2D.Length; i++)
+            {
+                if (_collider2DStates[i])
+                    _colliders2D[i].enabled = true;
+            }
+
             for (int i = 0; i < _renderers.Length; i++)
             {
                 if (_rendererStates[i])
@@ -117,8 +150,11 @@ namespace Skywatch.AssetManagement.Pooling
                 transform.GetChild(i).gameObject.SetActive(true);
             }
 
-            foreach (var ps in _particleSystems)
+            for (int i = 0; i < _particleSystems.Length; i++)
             {
+                var ps = _particleSystems[i];
+                var main = ps.main;
+                main.useUnscaledTime = _particleSystemUnscaledTime[i];
                 ps.Stop(true);
                 ps.Play(true);
             }
@@ -134,7 +170,13 @@ namespace Skywatch.AssetManagement.Pooling
             if (_rigidbody)
             {
                 _rigidbody.isKinematic = _wasKinematic;
-                _rigidbody.freezeRotation = false;
+                _rigidbody.freezeRotation = _wasFreezeRotation;
+            }
+
+            if (_rigidbody2D)
+            {
+                _rigidbody2D.bodyType = _wasBodyType2D;
+                _rigidbody2D.constraints = _wasConstraints2D;
             }
 
             inPool = false;
@@ -157,6 +199,7 @@ namespace Skywatch.AssetManagement.Pooling
             
             _behaviours.ForEach(x => x.enabled = false);
             _colliders.ForEach(x => x.enabled = false);
+            _colliders2D.ForEach(x => x.enabled = false);
             _renderers.ForEach(x => x.enabled = false);
 
             //Maybe change to GetComponentsInChildren<Transform>(true); ??
@@ -176,6 +219,16 @@ namespace Skywatch.AssetManagement.Pooling
                 _rigidbody.rotation = Quaternion.identity;
                 _rigidbody.freezeRotation = true;
                 _rigidbody.Sleep();
+            }
+
+            if (_rigidbody2D)
+            {
+                _rigidbody2D.bodyType = RigidbodyType2D.Kinematic;
+                _rigidbody2D.velocity = Vector2.zero;
+                _rigidbody2D.angularVelocity = 0f;
+                _rigidbody2D.rotation = 0f;
+                _rigidbody2D.constraints = RigidbodyConstraints2D.FreezeAll;
+                _rigidbody2D.Sleep();
             }
 
             inPool = true;

@@ -25,12 +25,26 @@ namespace Skywatch.AssetManagement
         
         static readonly Dictionary<object, AsyncOperationHandle> _loadingAssets = new Dictionary<object, AsyncOperationHandle>(20);
         static readonly Dictionary<object, AsyncOperationHandle> _loadedAssets = new Dictionary<object, AsyncOperationHandle>(100);
-        public static IReadOnlyList<object> LoadedAssets => _loadedAssets.Values.Select(x => x.Result).ToList();
+        static List<object> _cachedLoadedAssets = null;
+        static bool _loadedAssetsCacheDirty = true;
+        public static IReadOnlyList<object> LoadedAssets
+        {
+            get
+            {
+                if (_loadedAssetsCacheDirty || _cachedLoadedAssets == null)
+                {
+                    _cachedLoadedAssets = _loadedAssets.Values.Select(x => x.Result).ToList();
+                    _loadedAssetsCacheDirty = false;
+                }
+                return _cachedLoadedAssets;
+            }
+        }
         static readonly Dictionary<object, List<GameObject>> _instantiatedObjects = new Dictionary<object, List<GameObject>>(10);
+        static int _cachedInstantiatedAssetsCount = 0;
 
         public static int loadedAssetsCount => _loadedAssets.Count;
         public static int loadingAssetsCount => _loadingAssets.Count;
-        public static int instantiatedAssetsCount => _instantiatedObjects.Values.SelectMany(x => x).Count();
+        public static int instantiatedAssetsCount => _cachedInstantiatedAssetsCount;
 
         #region Get
         public static bool IsLoaded(AssetReference aRef)
@@ -87,8 +101,9 @@ namespace Skywatch.AssetManagement
                 {
                     handle = _loadedAssets[key].Convert<TObjectType>();
                 }
-                catch
+                catch (Exception ex)
                 {
+                    Debug.LogWarning($"{_baseErr}Failed to convert loaded asset to {typeof(TObjectType).Name}: {ex.Message}. Attempting fallback conversion.");
                     handle = Addressables.ResourceManager.CreateCompletedOperation(_loadedAssets[key].Result as TObjectType, string.Empty);
                 }
 
@@ -102,8 +117,9 @@ namespace Skywatch.AssetManagement
                 {
                     handle = _loadingAssets[key].Convert<TObjectType>();
                 }
-                catch
+                catch (Exception ex)
                 {
+                    Debug.LogWarning($"{_baseErr}Failed to convert loading asset to {typeof(TObjectType).Name}: {ex.Message}. Attempting fallback conversion.");
                     handle = Addressables.ResourceManager.CreateChainOperation(_loadingAssets[key], chainOp => Addressables.ResourceManager.CreateCompletedOperation(chainOp.Result as TObjectType, string.Empty));
                 }
                 return false;
@@ -118,7 +134,8 @@ namespace Skywatch.AssetManagement
             {
                 _loadedAssets.Add(key, op2);
                 _loadingAssets.Remove(key);
-                
+                _loadedAssetsCacheDirty = true;
+
                 OnAssetLoaded?.Invoke(key, op2);
             };
             
@@ -179,6 +196,7 @@ namespace Skywatch.AssetManagement
             {
                 _loadedAssets.Add(key, op2);
                 _loadingAssets.Remove(key);
+                _loadedAssetsCacheDirty = true;
 
                 OnAssetLoaded?.Invoke(key, op2);
             };
@@ -259,6 +277,7 @@ namespace Skywatch.AssetManagement
         }
         static void AssetLoadedCallback(object key, AsyncOperationHandle handle)
         {
+            _loadedAssetsCacheDirty = true;
             OnAssetLoaded?.Invoke(key, handle);
         }
 
@@ -289,6 +308,7 @@ namespace Skywatch.AssetManagement
             {
                 handle = _loadedAssets[key];
                 _loadedAssets.Remove(key);
+                _loadedAssetsCacheDirty = true;
             }
             else
             {
@@ -304,30 +324,33 @@ namespace Skywatch.AssetManagement
             OnAssetUnloaded?.Invoke(key);
         }
 
-        public static void UnloadByLabel(string label)
+        public static AsyncOperationHandle<bool> UnloadByLabel(string label)
         {
             if (string.IsNullOrEmpty(label) || string.IsNullOrWhiteSpace(label))
             {
-                Debug.LogError("Label cannot be empty.");
-                return;
+                Debug.LogError($"{_baseErr}Label cannot be empty.");
+                return Addressables.ResourceManager.CreateCompletedOperation(false, "Label cannot be empty.");
             }
-            
+
             var locationsHandle = Addressables.LoadResourceLocationsAsync(label);
-            locationsHandle.Completed += op =>
+
+            return Addressables.ResourceManager.CreateChainOperation(locationsHandle, chainOp =>
             {
                 if (locationsHandle.Status != AsyncOperationStatus.Succeeded)
                 {
-                    Debug.LogError($"Cannot Unload by label '{label}'");
-                    return;
+                    Debug.LogError($"{_baseErr}Cannot Unload by label '{label}': {locationsHandle.OperationException?.Message ?? "Unknown error"}");
+                    return Addressables.ResourceManager.CreateCompletedOperation(false, $"Failed to load resource locations for label '{label}'");
                 }
-                var keys = GetKeysFromLocations(op.Result);
+
+                var keys = GetKeysFromLocations(chainOp.Result);
                 foreach (var key in keys)
                 {
                     if (IsLoaded(key) || IsLoading(key))
                         Unload(key);
                 }
-            };
 
+                return Addressables.ResourceManager.CreateCompletedOperation(true, string.Empty);
+            });
         }
         
         #endregion
@@ -393,6 +416,13 @@ namespace Skywatch.AssetManagement
         public static bool TryInstantiateMultiOrLoadAsync(AssetReference aRef, int count, Vector3 position, Quaternion rotation, Transform parent,
             out AsyncOperationHandle<List<GameObject>> handle)
         {
+            if (count <= 0)
+            {
+                Debug.LogError($"{_baseErr}Count must be greater than 0. Provided count: {count}");
+                handle = Addressables.ResourceManager.CreateCompletedOperation<List<GameObject>>(null, "Count must be greater than 0.");
+                return false;
+            }
+
             if (TryGetOrLoadObjectAsync(aRef, out AsyncOperationHandle<GameObject> loadHandle))
             {
                 var list = new List<GameObject>(count);
@@ -429,6 +459,13 @@ namespace Skywatch.AssetManagement
         public static bool TryInstantiateMultiOrLoadAsync<TComponentType>(AssetReference aRef, int count, Vector3 position, Quaternion rotation, Transform parent,
             out AsyncOperationHandle<List<TComponentType>> handle) where TComponentType : Component
         {
+            if (count <= 0)
+            {
+                Debug.LogError($"{_baseErr}Count must be greater than 0. Provided count: {count}");
+                handle = Addressables.ResourceManager.CreateCompletedOperation<List<TComponentType>>(null, "Count must be greater than 0.");
+                return false;
+            }
+
             if (TryGetOrLoadComponentAsync(aRef, out AsyncOperationHandle<TComponentType> loadHandle))
             {
                 var list = new List<TComponentType>(count);
@@ -500,6 +537,13 @@ namespace Skywatch.AssetManagement
         public static bool TryInstantiateMultiSync(AssetReference aRef, int count, Vector3 position, Quaternion rotation, Transform parent,
             out List<GameObject> result)
         {
+            if (count <= 0)
+            {
+                Debug.LogError($"{_baseErr}Count must be greater than 0. Provided count: {count}");
+                result = null;
+                return false;
+            }
+
             if (!TryGetObjectSync(aRef, out GameObject loadResult))
             {
                 result = null;
@@ -519,6 +563,13 @@ namespace Skywatch.AssetManagement
         public static bool TryInstantiateMultiSync<TComponentType>(AssetReference aRef, int count, Vector3 position, Quaternion rotation, Transform parent,
             out List<TComponentType> result) where TComponentType : Component
         {
+            if (count <= 0)
+            {
+                Debug.LogError($"{_baseErr}Count must be greater than 0. Provided count: {count}");
+                result = null;
+                return false;
+            }
+
             if (!TryGetComponentSync(aRef, out TComponentType loadResult))
             {
                 result = null;
@@ -557,6 +608,7 @@ namespace Skywatch.AssetManagement
             if(!_instantiatedObjects.ContainsKey(key))
                 _instantiatedObjects.Add(key, new List<GameObject>(20));
             _instantiatedObjects[key].Add(instance.gameObject);
+            _cachedInstantiatedAssetsCount++;
             return instance;
         }
         static GameObject InstantiateInternal(AssetReference aRef, GameObject loadedAsset, Vector3 position, Quaternion rotation, Transform parent)
@@ -574,13 +626,17 @@ namespace Skywatch.AssetManagement
             if(!_instantiatedObjects.ContainsKey(key))
                 _instantiatedObjects.Add(key, new List<GameObject>(20));
             _instantiatedObjects[key].Add(instance);
+            _cachedInstantiatedAssetsCount++;
             return instance;
         }
-        
+
         static void TrackerDestroyed(MonoTracker tracker)
         {
             if (_instantiatedObjects.TryGetValue(tracker.key, out var list))
-                list.Remove(tracker.gameObject);
+            {
+                if (list.Remove(tracker.gameObject))
+                    _cachedInstantiatedAssetsCount--;
+            }
         }
 
         /// <summary>
@@ -603,12 +659,14 @@ namespace Skywatch.AssetManagement
         static void DestroyAllInstances(object key)
         {
             var instanceList = _instantiatedObjects[key];
+            var count = instanceList.Count;
             for (int i = instanceList.Count - 1; i >= 0; i--)
             {
                 DestroyInternal(instanceList[i]);
             }
             _instantiatedObjects[key].Clear();
             _instantiatedObjects.Remove(key);
+            _cachedInstantiatedAssetsCount -= count;
         }
         static void DestroyInternal(Object obj)
         {
@@ -629,7 +687,6 @@ namespace Skywatch.AssetManagement
         {
             if (!aRef.RuntimeKeyIsValid())
             {
-                //Debug.Log(aRef.RuntimeKey);
                 throw new InvalidKeyException($"{_baseErr}{nameof(aRef.RuntimeKey)} is not valid for '{aRef}'.");
             }
         }
