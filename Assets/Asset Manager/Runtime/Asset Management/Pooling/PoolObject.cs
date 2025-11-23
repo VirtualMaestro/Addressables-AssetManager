@@ -22,6 +22,9 @@ namespace Skywatch.AssetManagement.Pooling
         [NonSerialized] Collider[] _colliders;
         [NonSerialized] bool[] _colliderStates;
 
+        [NonSerialized] Collider2D[] _colliders2D;
+        [NonSerialized] bool[] _collider2DStates;
+
         [NonSerialized] Renderer[] _renderers;
         [NonSerialized] bool[] _rendererStates;
 
@@ -35,9 +38,11 @@ namespace Skywatch.AssetManagement.Pooling
 
         [NonSerialized] Rigidbody _rigidbody;
         [NonSerialized] bool _wasKinematic;
+        [NonSerialized] bool _wasFreezeRotation;
 
         [NonSerialized] Rigidbody2D _rigidbody2D;
         [NonSerialized] RigidbodyType2D _wasBodyType2D;
+        [NonSerialized] RigidbodyConstraints2D _wasConstraints2D;
 
         public bool inPool { get; private set; }
         public IPool myPool { get; set; }
@@ -66,6 +71,11 @@ namespace Skywatch.AssetManagement.Pooling
             for (int i = 0; i < _colliderStates.Length; i++)
                 _colliderStates[i] = _colliders[i].enabled;
 
+            _colliders2D = GetComponents<Collider2D>();
+            _collider2DStates = new bool[_colliders2D.Length];
+            for (int i = 0; i < _collider2DStates.Length; i++)
+                _collider2DStates[i] = _colliders2D[i].enabled;
+
             _renderers = GetComponents<Renderer>();
             _rendererStates = new bool[_renderers.Length];
             for (int i = 0; i < _renderers.Length; i++)
@@ -87,11 +97,17 @@ namespace Skywatch.AssetManagement.Pooling
 
             _rigidbody = GetComponent<Rigidbody>();
             if (_rigidbody)
+            {
                 _wasKinematic = _rigidbody.isKinematic;
+                _wasFreezeRotation = _rigidbody.freezeRotation;
+            }
 
             _rigidbody2D = GetComponent<Rigidbody2D>();
             if (_rigidbody2D)
+            {
                 _wasBodyType2D = _rigidbody2D.bodyType;
+                _wasConstraints2D = _rigidbody2D.constraints;
+            }
 
             var poolBehaviours = GetComponents<PoolBehaviour>();
             poolBehaviours.ForEach(x => x.SetPoolObject(this));
@@ -111,6 +127,12 @@ namespace Skywatch.AssetManagement.Pooling
             {
                 if (_colliderStates[i])
                     _colliders[i].enabled = true;
+            }
+
+            for (int i = 0; i < _colliders2D.Length; i++)
+            {
+                if (_collider2DStates[i])
+                    _colliders2D[i].enabled = true;
             }
 
             for (int i = 0; i < _renderers.Length; i++)
@@ -148,13 +170,13 @@ namespace Skywatch.AssetManagement.Pooling
             if (_rigidbody)
             {
                 _rigidbody.isKinematic = _wasKinematic;
-                _rigidbody.freezeRotation = false;
+                _rigidbody.freezeRotation = _wasFreezeRotation;
             }
 
             if (_rigidbody2D)
             {
                 _rigidbody2D.bodyType = _wasBodyType2D;
-                _rigidbody2D.constraints = RigidbodyConstraints2D.None;
+                _rigidbody2D.constraints = _wasConstraints2D;
             }
 
             inPool = false;
@@ -177,6 +199,7 @@ namespace Skywatch.AssetManagement.Pooling
             
             _behaviours.ForEach(x => x.enabled = false);
             _colliders.ForEach(x => x.enabled = false);
+            _colliders2D.ForEach(x => x.enabled = false);
             _renderers.ForEach(x => x.enabled = false);
 
             //Maybe change to GetComponentsInChildren<Transform>(true); ??

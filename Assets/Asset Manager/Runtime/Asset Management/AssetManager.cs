@@ -40,10 +40,11 @@ namespace Skywatch.AssetManagement
             }
         }
         static readonly Dictionary<object, List<GameObject>> _instantiatedObjects = new Dictionary<object, List<GameObject>>(10);
+        static int _cachedInstantiatedAssetsCount = 0;
 
         public static int loadedAssetsCount => _loadedAssets.Count;
         public static int loadingAssetsCount => _loadingAssets.Count;
-        public static int instantiatedAssetsCount => _instantiatedObjects.Values.SelectMany(x => x).Count();
+        public static int instantiatedAssetsCount => _cachedInstantiatedAssetsCount;
 
         #region Get
         public static bool IsLoaded(AssetReference aRef)
@@ -607,6 +608,7 @@ namespace Skywatch.AssetManagement
             if(!_instantiatedObjects.ContainsKey(key))
                 _instantiatedObjects.Add(key, new List<GameObject>(20));
             _instantiatedObjects[key].Add(instance.gameObject);
+            _cachedInstantiatedAssetsCount++;
             return instance;
         }
         static GameObject InstantiateInternal(AssetReference aRef, GameObject loadedAsset, Vector3 position, Quaternion rotation, Transform parent)
@@ -624,13 +626,17 @@ namespace Skywatch.AssetManagement
             if(!_instantiatedObjects.ContainsKey(key))
                 _instantiatedObjects.Add(key, new List<GameObject>(20));
             _instantiatedObjects[key].Add(instance);
+            _cachedInstantiatedAssetsCount++;
             return instance;
         }
-        
+
         static void TrackerDestroyed(MonoTracker tracker)
         {
             if (_instantiatedObjects.TryGetValue(tracker.key, out var list))
-                list.Remove(tracker.gameObject);
+            {
+                if (list.Remove(tracker.gameObject))
+                    _cachedInstantiatedAssetsCount--;
+            }
         }
 
         /// <summary>
@@ -653,12 +659,14 @@ namespace Skywatch.AssetManagement
         static void DestroyAllInstances(object key)
         {
             var instanceList = _instantiatedObjects[key];
+            var count = instanceList.Count;
             for (int i = instanceList.Count - 1; i >= 0; i--)
             {
                 DestroyInternal(instanceList[i]);
             }
             _instantiatedObjects[key].Clear();
             _instantiatedObjects.Remove(key);
+            _cachedInstantiatedAssetsCount -= count;
         }
         static void DestroyInternal(Object obj)
         {
