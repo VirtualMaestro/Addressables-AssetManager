@@ -59,8 +59,6 @@ namespace Skywatch.AssetManagement.Pooling
             if (disposing)
             {
                 AllPools.Remove(assetReference.RuntimeKey);
-                // Debug.Log(AllPools.ContainsKey(assetReference.RuntimeKey));
-                // Debug.Log($"Remove {this} from AllPools");
                 _isReady = false;
             }
 
@@ -182,8 +180,6 @@ namespace Skywatch.AssetManagement.Pooling
 
         protected override void AddToPool(int count)
         {
-            //Debug.Log($"ADD TO POOL: {count} {this}");
-            
             if (isReady)
             {
                 AddToPoolSyncSafe(count);
@@ -200,7 +196,6 @@ namespace Skywatch.AssetManagement.Pooling
             var pos = objectsParent ? objectsParent.position : Vector3.zero;
 
             AssetManager.TryInstantiateMultiSync<TComponent>(assetReference, count, pos, Quaternion.identity, objectsParent, out var instanceList);
-            //var instanceList = AssetManager.InstantiateLoadedAssetSync<TComponent>(assetReference, count, pos, Quaternion.identity, objectsParent);
             foreach (var component in instanceList)
             {
                 var po = component.gameObject.AddComponent<PoolObject>();
